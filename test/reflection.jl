@@ -271,4 +271,61 @@
         @test found_string
         @test found_builder
     end
+
+    @testset "Find Fields" begin
+        fields = Reflection.classfields(Symbol("Test"))
+        @test length(fields) > 0
+
+        foundboolean = false
+        foundinteger = false
+        foundstring = false
+        foundobjectarr = false
+
+        booleanfield = Reflection.FieldDescriptor(
+            "booleanField",
+            Reflection.ClassDescriptor(C_NULL, :Bool, :jboolean, "Z"),
+            Reflection.ModifiersDescriptor(false, true)
+        )
+
+        integerfield = Reflection.FieldDescriptor(
+            "integerField",
+            Reflection.ClassDescriptor(C_NULL, :Int32, :jint, "I"),
+            Reflection.ModifiersDescriptor(true, true)
+        )
+
+        stringfield = Reflection.FieldDescriptor(
+            "stringField",
+            Reflection.ClassDescriptor(C_NULL, :JString, :jobject, "Ljava/lang/String;"),
+            Reflection.ModifiersDescriptor(false, true)
+        )
+
+        objectarrfield = Reflection.FieldDescriptor(
+            "objectArrField",
+            Reflection.ClassDescriptor(
+                C_NULL, 
+                :(Vector{JObject}), 
+                :jobjectArray, 
+                "[Ljava/lang/Object;",
+                Reflection.ClassDescriptor(C_NULL, :JObject, :jobject, "Ljava/lang/Object;")    
+            ),
+            Reflection.ModifiersDescriptor(false, true)
+        )
+
+        for f in fields
+            if f == booleanfield
+                foundboolean = true
+            elseif f == integerfield
+                foundinteger = true
+            elseif f == stringfield
+                foundstring = true
+            elseif f == objectarrfield
+                foundobjectarr = true
+            end
+        end
+
+        @test foundboolean
+        @test foundinteger
+        @test foundstring
+        @test foundobjectarr
+    end
 end

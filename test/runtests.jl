@@ -1,4 +1,3 @@
-using Base: Float32
 # Configuration file for test variables
 # Not synched to github as each environment can have different configurations
 # See baseconfig.jl to see the expected variables

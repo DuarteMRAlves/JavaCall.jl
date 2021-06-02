@@ -173,7 +173,9 @@ function juliatypefromclass(class::jclass)
         :(Vector{$(juliatypefromclass(componenttype(class)))})
     else
         name = classname(class)
-        Symbol(string('J', name[findlast('.', name) + 1:end]))
+        lastdotidx = findlast('.', name)
+        lastdotidx = isnothing(lastdotidx) ? 0 : lastdotidx
+        Symbol(string('J', name[lastdotidx + 1:end]))
     end
 end
 

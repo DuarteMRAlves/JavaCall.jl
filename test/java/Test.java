@@ -4,9 +4,9 @@ import java.util.ArrayList;
 public class Test {
 
   public boolean booleanField = true;
-  public int integerField = 100;
+  public static int integerField = 100;
   public String stringField = "A STRING";
-  public Object objectField = null;
+  public Object[] objectArrField = null;
 
   public static short testShort(short i) {
       System.out.print("In Java, recd: ");System.out.println(i);
@@ -110,12 +110,12 @@ public class Test {
     stringField = s;
   }
 
-  public Object getObject() {
-    return objectField;
+  public Object[] getObjectArr() {
+    return objectArrField;
   }
 
-  public void setObject(Object val) {
-    objectField = val;
+  public void setObjectArr(Object[] val) {
+    objectArrField = val;
   }
 
   public String toString() {

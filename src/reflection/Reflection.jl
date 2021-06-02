@@ -9,16 +9,20 @@ export
     classmethods, classdeclaredmethods,
     isstatic, ispublic, MethodDescriptor,
     # Constructors.jl
-    classconstructors, ConstructorDescriptor
+    classconstructors, ConstructorDescriptor,
+    # Fields.jl
+    classfields, FieldDescriptor
 
 include("Classes.jl")
 include("Modifiers.jl")
 include("Methods.jl")
 include("Constructors.jl")
+include("Fields.jl")
 
 using .Classes
 using .Modifiers
 using .Methods
 using .Constructors
+using .Fields
 
 end
