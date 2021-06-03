@@ -1,7 +1,7 @@
 @testset verbose = true "Tests for exceptions" begin
 
     using JavaCall.JNI
-    using JavaCall: JavaCodeGeneration, JavaLang
+    using JavaCall: JavaCodeGeneration
 
     @testset "Integer Parsing Exception" begin
         eval(JavaCodeGeneration.loadclass(Symbol("java.lang.Integer")))

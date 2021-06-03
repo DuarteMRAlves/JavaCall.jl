@@ -17,6 +17,4 @@ export
 # Java VM
     init, destroy,
 # Jimport
-    @jimport,
-# Java Lang
-    JObject, JString, new_string, equals
+    @jimport
