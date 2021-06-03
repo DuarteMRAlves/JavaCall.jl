@@ -4,9 +4,9 @@
     @testset "Test Simple Object" begin
         eval(JavaCodeGeneration.loadclass(Symbol("java.lang.Object")))
         @test @isdefined JObject
-        @test @isdefined JObjectImpl
+        @test @isdefined JObjectJuliaImpl
         @test @isdefined JString
-        @test @isdefined JStringImpl
+        @test @isdefined JStringJuliaImpl
         @test @isdefined j_equals
         @test @isdefined j_to_string
     end
@@ -69,13 +69,20 @@
     @testset "Test Load Superclass" begin
         eval(JavaCodeGeneration.loadclass(Symbol("java.lang.Integer")))
         @test @isdefined JInteger
-        @test @isdefined JIntegerImpl
+        @test @isdefined JIntegerJuliaImpl
         @test @isdefined JNumber
-        @test @isdefined JNumberImpl
+        @test @isdefined JNumberJuliaImpl
 
         a = JInteger(Int32(1))
         b = JInteger(Int32(1))
         @test 1 == j_long_value(a)
         @test a == b
+    end
+
+    @testset "Test Load Return Value" begin
+        eval(JavaCodeGeneration.loadclass(Symbol("javax.net.SocketFactory")))
+        socketfactory = j_get_default(JSocketFactory)
+        socket = j_create_socket(socketfactory)
+        @test @isdefined(j_bind) # Socket.bind
     end
 end

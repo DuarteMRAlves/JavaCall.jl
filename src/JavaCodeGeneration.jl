@@ -9,6 +9,8 @@ using JavaCall.CodeGeneration
 using JavaCall.Reflection
 using JavaCall.Utils
 
+using JavaCall.JNI
+
 const SHALLOW_LOADED_SYMBOLS = Set([
     :Bool, 
     :Int8, 
@@ -23,7 +25,7 @@ const SHALLOW_LOADED_SYMBOLS = Set([
 
 const FULLY_LOADED_SYMBOLS = copy(SHALLOW_LOADED_SYMBOLS)
 
-structidfromtypeid(typeid::Symbol) = Symbol(typeid, "Impl")
+structidfromtypeid(typeid::Symbol) = Symbol(typeid, "JuliaImpl")
 
 paramnamefromindex(i::Int64) = Symbol("param", i)
 
@@ -31,6 +33,11 @@ paramexprfromtuple(x::Tuple{Int64, ClassDescriptor}) = :($(paramnamefromindex(x[
 
 function generateconvertarg(x::Tuple{Int64, ClassDescriptor})
     :(push!(args, JavaCall.Conversions.convert_to_jni($(x[2].jnitype), $(paramnamefromindex(x[1])))))
+end
+
+function loadclassfromobject(object::jobject)
+    class = JNI.get_object_class(object)
+    loadclass(Reflection.descriptorfromclass(class))
 end
 
 function methodfromdescriptors(
@@ -64,6 +71,12 @@ function methodfromdescriptors(
             $(methoddescriptor.rettype.jnitype),
             $signature,
             args...)
+
+        $(generateexceptionhandling())
+
+        if isa(result, jobject)
+            eval(JavaCall.JavaCodeGeneration.loadclassfromobject(result))
+        end
         JavaCall.Conversions.convert_to_julia($(methoddescriptor.rettype.juliatype), result)
     end
     generatemethod(
@@ -95,6 +108,12 @@ function methodfromdescriptors(
             $(descriptor.rettype.jnitype),
             $signature,
             args...)
+
+        $(generateexceptionhandling())
+
+        if isa(result, jobject)
+            eval(JavaCall.JavaCodeGeneration.loadclassfromobject(result))
+        end
         JavaCall.Conversions.convert_to_julia($(descriptor.rettype.juliatype), result)
     end
     generatemethod(
@@ -258,6 +277,25 @@ function loadjuliamethods!(exprstoeval, class)
             :(j_equals(o1, o2))
         )
     )
+end
+
+function generateexceptionhandling()
+    quote
+        if JNI.exception_check() === JNI_TRUE
+            exception = JNI.exception_occurred()
+            class = JNI.get_object_class(exception)
+            desc = JavaCall.Reflection.descriptorfromclass(class)
+            eval(JavaCall.JavaCodeGeneration.loadclass(desc))
+            JNI.exception_clear()
+            throw(eval(quote
+                JavaCall.Conversions.convert_to_julia(
+                    $(desc.juliatype),
+                    $exception
+                )
+                end
+            ))
+        end
+    end
 end
 
 end
