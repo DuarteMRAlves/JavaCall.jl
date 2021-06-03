@@ -44,10 +44,6 @@ include("setup.jl")
     # Test jimport
     @info "Test Import Statements"
     include("jimport.jl")
-
-    # Test java lang
-    @info "Test Java Lang"
-    include("javalang.jl")
 end
 
 include("teardown.jl")

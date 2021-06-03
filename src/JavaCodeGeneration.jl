@@ -230,6 +230,7 @@ function loadfullcomponents!(exprstoeval, class::ClassDescriptor)
     loadmethods!(exprstoeval, class, methods)
     loadconstructors!(exprstoeval, class, constructors)
     loadjuliamethods!(exprstoeval, class)
+    loadcustommethods!(Val(class.juliatype), exprstoeval, class)
     push!(FULLY_LOADED_SYMBOLS, class.juliatype)
 end
 
@@ -279,14 +280,40 @@ function loadjuliamethods!(exprstoeval, class)
     )
 end
 
+# Function to implement for concrete types to add
+# custom methods to a given loaded class
+loadcustommethods!(::Val{T}, exprstoeval, class) where T = nothing
+
+function loadcustommethods!(::Val{:JString}, exprstoeval, class)
+    push!(
+        exprstoeval,
+        # Add an extra constructor to facilitate
+        # construction of java strings from julia strings
+        generatemethod(
+            :JString,
+            [:(s::T)],
+            :(JavaCall.Conversions.convert_to_julia(
+                JString, 
+                JavaCall.JNI.new_string(map(JavaCall.JNI.jchar, collect(s)), length(s)))),
+            :(T <: AbstractString)
+        ),
+        # Add extra string method from JString
+        generatemethod(
+            :string,
+            [:(s::JString)],
+            :(JavaCall.Conversions.convert_to_string(String, s.ref))
+        )
+    )
+end
+
 function generateexceptionhandling()
     quote
-        if JNI.exception_check() === JNI_TRUE
-            exception = JNI.exception_occurred()
-            class = JNI.get_object_class(exception)
+        if JavaCall.JNI.exception_check() === JavaCall.JNI.JNI_TRUE
+            exception = JavaCall.JNI.exception_occurred()
+            class = JavaCall.JNI.get_object_class(exception)
             desc = JavaCall.Reflection.descriptorfromclass(class)
             eval(JavaCall.JavaCodeGeneration.loadclass(desc))
-            JNI.exception_clear()
+            JavaCall.JNI.exception_clear()
             throw(eval(quote
                 JavaCall.Conversions.convert_to_julia(
                     $(desc.juliatype),

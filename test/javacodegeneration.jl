@@ -64,6 +64,14 @@
         @test_false j_equals(hello1, helloworld)
         @test hello1 == hello2
         @test hello1 != helloworld
+
+        # Test string special constructor
+        helloworld2 = JString("Hello World")
+        @test j_equals(helloworld, helloworld2)
+        @test helloworld == helloworld2
+
+        # Test string method to convert JString
+        @test string(helloworld2) == "Hello World"
     end
 
     @testset "Test Load Superclass" begin
