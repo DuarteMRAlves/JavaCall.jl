@@ -4,21 +4,38 @@
     using JavaCall: JavaCodeGeneration
 
     @testset "Integer Parsing Exception" begin
-        eval(JavaCodeGeneration.loadclass(Symbol("java.lang.Integer")))
-        eval(JavaCodeGeneration.loadclass(Symbol("java.lang.String")))
+        exceptions_mod = Module(:Exceptions)
+        Core.eval(exceptions_mod, :(using JavaCall))
+        Core.eval(exceptions_mod, JavaCodeGeneration.loadclass(
+            exceptions_mod, 
+            Symbol("java.lang.Integer")
+        ))
+        Core.eval(exceptions_mod, JavaCodeGeneration.loadclass(
+            exceptions_mod, 
+            Symbol("java.lang.String")
+        ))
 
-        invalidnumber = JString(Char['1', '!', '3'])
+        invalidnumber = exceptions_mod.JString(Char['1', '!', '3'])
 
-        @test_throws JNumberFormatExceptionJuliaImpl j_parse_int(JInteger, invalidnumber)
-        @test_throws JNumberFormatException j_parse_int(JInteger, invalidnumber)
-        @test_throws JRuntimeException j_parse_int(JInteger, invalidnumber)
+        @test_throws exceptions_mod.JNumberFormatExceptionJuliaImpl exceptions_mod.j_parse_int(
+            exceptions_mod.JInteger, 
+            invalidnumber
+        )
+        @test_throws exceptions_mod.JNumberFormatException exceptions_mod.j_parse_int(
+            exceptions_mod.JInteger, 
+            invalidnumber
+        )
+        @test_throws exceptions_mod.JRuntimeException exceptions_mod.j_parse_int(
+            exceptions_mod.JInteger,
+            invalidnumber
+        )
 
         try
-            j_parse_int(JInteger, invalidnumber)
+            exceptions_mod.j_parse_int(exceptions_mod.JInteger, invalidnumber)
         catch e
-            @test isa(e, JNumberFormatException)
-            @test isa(e, JThrowable)
-            @test j_length(j_get_message(e)) > 0
+            @test isa(e, exceptions_mod.JNumberFormatException)
+            @test isa(e, exceptions_mod.JThrowable)
+            @test exceptions_mod.j_length(exceptions_mod.j_get_message(e)) > 0
         end
     end
 end

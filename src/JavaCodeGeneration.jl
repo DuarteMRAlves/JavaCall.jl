@@ -5,13 +5,15 @@ export loadclass
 
 using Base.Iterators
 
+using DataStructures
+
 using JavaCall.CodeGeneration
 using JavaCall.Reflection
 using JavaCall.Utils
 
 using JavaCall.JNI
 
-const SHALLOW_LOADED_SYMBOLS = Set([
+const DEFAULT_SYMBOLS = Set([
     :Bool, 
     :Int8, 
     :Char,
@@ -23,7 +25,11 @@ const SHALLOW_LOADED_SYMBOLS = Set([
     :Nothing
 ])
 
-const FULLY_LOADED_SYMBOLS = copy(SHALLOW_LOADED_SYMBOLS)
+const SHALLOW_LOADED_SYMBOLS = 
+    DefaultDict{Module, Set{Symbol}}(() -> copy(DEFAULT_SYMBOLS))
+
+const FULLY_LOADED_SYMBOLS = 
+    DefaultDict{Module, Set{Symbol}}(() -> copy(DEFAULT_SYMBOLS))
 
 structidfromtypeid(typeid::Symbol) = Symbol(typeid, "JuliaImpl")
 
@@ -35,17 +41,19 @@ function generateconvertarg(x::Tuple{Int64, ClassDescriptor})
     :(push!(args, JavaCall.Conversions.convert_to_jni($(x[2].jnitype), $(paramnamefromindex(x[1])))))
 end
 
-function loadclassfromobject(object::jobject)
+function loadclassfromobject(m::Module, object::jobject)
     class = JNI.get_object_class(object)
-    loadclass(Reflection.descriptorfromclass(class))
+    loadclass(m, Reflection.descriptorfromclass(class))
 end
 
 function methodfromdescriptors(
+    m::Module,
     classdescriptor::ClassDescriptor,
     methoddescriptor::MethodDescriptor
 )   
     methodfromdescriptors(
         Val(isstatic(methoddescriptor)),
+        m::Module,
         classdescriptor,
         methoddescriptor
     )
@@ -53,6 +61,7 @@ end
 
 function methodfromdescriptors(
     ::Val{true},
+    m::Module,
     classdescriptor::ClassDescriptor,
     methoddescriptor::MethodDescriptor
 )   
@@ -72,10 +81,10 @@ function methodfromdescriptors(
             $signature,
             args...)
 
-        $(generateexceptionhandling())
+        $(generateexceptionhandling(m))
 
         if isa(result, jobject)
-            eval(JavaCall.JavaCodeGeneration.loadclassfromobject(result))
+            Core.eval($m, JavaCall.JavaCodeGeneration.loadclassfromobject($m, result))
         end
         JavaCall.Conversions.convert_to_julia($(methoddescriptor.rettype.juliatype), result)
     end
@@ -87,6 +96,7 @@ end
 
 function methodfromdescriptors(
     ::Val{false},
+    m::Module,
     receiverdescriptor::ClassDescriptor,
     descriptor::MethodDescriptor
 )
@@ -109,10 +119,10 @@ function methodfromdescriptors(
             $signature,
             args...)
 
-        $(generateexceptionhandling())
+        $(generateexceptionhandling(m))
 
         if isa(result, jobject)
-            eval(JavaCall.JavaCodeGeneration.loadclassfromobject(result))
+            Core.eval($m, JavaCall.JavaCodeGeneration.loadclassfromobject($m, result))
         end
         JavaCall.Conversions.convert_to_julia($(descriptor.rettype.juliatype), result)
     end
@@ -148,21 +158,22 @@ function constructorfromdescriptors(
         body)
 end
 
-loadclass(classname::Symbol, shallow=false) = loadclass(findclass(classname), shallow)
+loadclass(m::Module, classname::Symbol, shallow=false) = 
+    loadclass(m, findclass(classname), shallow)
 
-function loadclass(classdescriptor::ClassDescriptor, shallow=false)
+function loadclass(m::Module, classdescriptor::ClassDescriptor, shallow=false)
     if isarray(classdescriptor)
-        return generateblock(loadclass(classdescriptor.component, true))
+        return generateblock(loadclass(m, classdescriptor.component, true))
     end
 
     exprstoeval = []
     
-    if !shallowcomponentsloeaded(classdescriptor)
-        loadshallowcomponents!(exprstoeval, classdescriptor)
+    if !shallowcomponentsloeaded(m, classdescriptor)
+        loadshallowcomponents!(m, exprstoeval, classdescriptor)
     end
 
-    if !shallow && !fullcomponentsloaded(classdescriptor)
-        loadfullcomponents!(exprstoeval, classdescriptor)
+    if !shallow && !fullcomponentsloaded(m, classdescriptor)
+        loadfullcomponents!(m, exprstoeval, classdescriptor)
     end
 
     generateblock(exprstoeval...)
@@ -170,22 +181,22 @@ end
 
 ## Loading of shallow components (minimal components required for the code to function)
 
-shallowcomponentsloeaded(d::ClassDescriptor) = d.juliatype in SHALLOW_LOADED_SYMBOLS
+shallowcomponentsloeaded(m::Module, d::ClassDescriptor) = d.juliatype in SHALLOW_LOADED_SYMBOLS[m]
 
-function loadshallowcomponents!(exprstoeval, classdescriptor)
-    loadtype!(exprstoeval, classdescriptor)
+function loadshallowcomponents!(m::Module, exprstoeval, classdescriptor)
+    loadtype!(m, exprstoeval, classdescriptor)
     loadstruct!(exprstoeval, classdescriptor)
     loadconversions!(exprstoeval, classdescriptor)
-    push!(SHALLOW_LOADED_SYMBOLS, classdescriptor.juliatype)
+    push!(SHALLOW_LOADED_SYMBOLS[m], classdescriptor.juliatype)
 end
 
-function loadtype!(exprstoeval, classdescriptor)
+function loadtype!(m, exprstoeval, classdescriptor)
     typeid = classdescriptor.juliatype
     
     if !isinterface(classdescriptor) &&
         superclass(classdescriptor) !== nothing
 
-        loadshallowcomponents!(exprstoeval, superclass(classdescriptor))
+        loadshallowcomponents!(m, exprstoeval, superclass(classdescriptor))
         push!(exprstoeval, generatetype(typeid, superclass(classdescriptor).juliatype))
     else
         push!(exprstoeval, generatetype(typeid))
@@ -219,45 +230,46 @@ end
 ## Loading of full components (fully generate the code for the class 
 ## such as methods and constructors)
 
-fullcomponentsloaded(d::ClassDescriptor) = d.juliatype in FULLY_LOADED_SYMBOLS
+fullcomponentsloaded(m::Module, d::ClassDescriptor) = 
+    d.juliatype in FULLY_LOADED_SYMBOLS[m]
 
-function loadfullcomponents!(exprstoeval, class::ClassDescriptor)
-    loadsuperclass!(exprstoeval, class)
-    methods = classdeclaredmethods(class)
+function loadfullcomponents!(m::Module, exprstoeval, class::ClassDescriptor)
+    loadsuperclass!(m, exprstoeval, class)
+    methods = filter(ispublic, classdeclaredmethods(class))
     constructors = classconstructors(class)
-    loaddependencies!(exprstoeval, methods)
-    loaddependencies!(exprstoeval, constructors)
-    loadmethods!(exprstoeval, class, methods)
+    loaddependencies!(m, exprstoeval, methods)
+    loaddependencies!(m, exprstoeval, constructors)
+    loadmethods!(m, exprstoeval, class, methods)
     loadconstructors!(exprstoeval, class, constructors)
     loadjuliamethods!(exprstoeval, class)
     loadcustommethods!(Val(class.juliatype), exprstoeval, class)
-    push!(FULLY_LOADED_SYMBOLS, class.juliatype)
+    push!(FULLY_LOADED_SYMBOLS[m], class.juliatype)
 end
 
-function loadsuperclass!(exprstoeval, class)
+function loadsuperclass!(m, exprstoeval, class)
     if !isinterface(class) && superclass(class) !== nothing
-        push!(exprstoeval, loadclass(superclass(class)))
+        push!(exprstoeval, loadclass(m, superclass(class)))
     end
 end
 
-function loaddependencies!(exprstoeval, methods::Vector{MethodDescriptor})
+function loaddependencies!(m, exprstoeval, methods::Vector{MethodDescriptor})
     dependencies = 
         flatmap(m -> [m.rettype, m.paramtypes...], methods) |>
-        l -> map(x -> loadclass(x, true), l)
+        l -> map(x -> loadclass(m, x, true), l)
     
     push!(exprstoeval, dependencies...)
 end
 
-function loaddependencies!(exprstoeval, constructors::Vector{ConstructorDescriptor})
+function loaddependencies!(m, exprstoeval, constructors::Vector{ConstructorDescriptor})
     dependencies = 
         flatmap(c -> c.paramtypes, constructors) |>
-        l -> map(x -> loadclass(x, true), l)
+        l -> map(x -> loadclass(m, x, true), l)
     
     push!(exprstoeval, dependencies...)
 end
 
-function loadmethods!(exprstoeval, class, methods)
-    push!(exprstoeval, map(x -> methodfromdescriptors(class, x), methods)...)
+function loadmethods!(m, exprstoeval, class, methods)
+    push!(exprstoeval, map(x -> methodfromdescriptors(m, class, x), methods)...)
 end
 
 function loadconstructors!(exprstoeval, class, constructors)
@@ -306,15 +318,15 @@ function loadcustommethods!(::Val{:JString}, exprstoeval, class)
     )
 end
 
-function generateexceptionhandling()
+function generateexceptionhandling(m::Module)
     quote
         if JavaCall.JNI.exception_check() === JavaCall.JNI.JNI_TRUE
             exception = JavaCall.JNI.exception_occurred()
             class = JavaCall.JNI.get_object_class(exception)
             desc = JavaCall.Reflection.descriptorfromclass(class)
-            eval(JavaCall.JavaCodeGeneration.loadclass(desc))
+            Core.eval($m, JavaCall.JavaCodeGeneration.loadclass($m, desc))
             JavaCall.JNI.exception_clear()
-            throw(eval(quote
+            throw(Core.eval($m, quote
                 JavaCall.Conversions.convert_to_julia(
                     $(desc.juliatype),
                     $exception
