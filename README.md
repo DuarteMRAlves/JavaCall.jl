@@ -26,7 +26,7 @@ To use this package execute the following steps:
 - And run java code
   ```Julia
   > a = JString("Hello, ")
-  > j_concat(a, JString("World!")
+  > a = j_concat(a, JString("World!")
   > string(a)
   "Hello, World!"
   ```
